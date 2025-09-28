@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactFlow, {
+import {
+  ReactFlow, // ← artık named
   Background,
   Controls,
   MiniMap,
@@ -10,9 +11,9 @@ import ReactFlow, {
   useEdgesState,
   useNodesState,
   useReactFlow,
-  ReactFlowProvider,
+  ReactFlowProvider, // ← bu da named
 } from '@xyflow/react'
-import * as htmlToImage from 'html-to-image' // ← kapanış tırnağı eklendi
+import * as htmlToImage from 'html-to-image'
 
 /* ---------- BASE URL (GitHub Pages için) ---------- */
 const BASE = import.meta.env.BASE_URL // örn lokalde "/", Pages'te "/REPO_ADI/"
