@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ReactFlow, // ← artık named
+  ReactFlow,
   Background,
   Controls,
   MiniMap,
@@ -11,14 +11,14 @@ import {
   useEdgesState,
   useNodesState,
   useReactFlow,
-  ReactFlowProvider, // ← bu da named
+  ReactFlowProvider,
 } from '@xyflow/react'
 import * as htmlToImage from 'html-to-image'
 
-/* ---------- BASE URL (GitHub Pages için) ---------- */
-const BASE = import.meta.env.BASE_URL // örn lokalde "/", Pages'te "/REPO_ADI/"
+/* ---- Statik dosya kökü: İSTEDİĞİN GİBİ ---- */
+const BASE = ''
 
-/* ---------- LocalStorage ---------- */
+/* ---- LocalStorage anahtarları ---- */
 const LS = {
   USER: 'algApp_user',
   CLASS: 'algApp_class',
@@ -38,7 +38,7 @@ const readLS = (k, f = null) => {
 const writeLS = (k, v) => localStorage.setItem(k, JSON.stringify(v))
 const uid = () => Math.random().toString(36).slice(2)
 
-/* ---------- Helpers ---------- */
+/* ---- Port/Handle ---- */
 const Port = ({ type, pos = 'top' }) => (
   <Handle
     type={type}
@@ -53,17 +53,24 @@ const Port = ({ type, pos = 'top' }) => (
   />
 )
 
-/* ---------- Node bileşenleri (PNG) ---------- */
+/* ---- PNG tabanlı node bileşenleri (senin görsellerin) ---- */
 const ImgNodeBase = ({ src, alt, label, ports = ['top', 'bottom'] }) => (
   <div className="node">
     {ports.includes('top') && <Port type="target" pos="top" />}
-    <img src={src} alt={alt} className="shape-img" draggable={false} />
+    <img
+      src={src}
+      alt={alt}
+      className="shape-img"
+      draggable={false}
+      crossOrigin="anonymous" /* <- ekran görüntüsü için */
+    />
     <div className="label">{label}</div>
     {ports.includes('left') && <Port type="source" pos="left" />}
     {ports.includes('right') && <Port type="source" pos="right" />}
     {ports.includes('bottom') && <Port type="source" pos="bottom" />}
   </div>
 )
+
 const StartEndNode = ({ data }) => (
   <ImgNodeBase
     src={`${BASE}shapes/basla.png`}
@@ -76,6 +83,14 @@ const ProcessNode = ({ data }) => (
     src={`${BASE}shapes/islem.png`}
     alt="İşlem"
     label={data.label || 'İşlem / Eylem'}
+  />
+)
+const DecisionNode = ({ data }) => (
+  <ImgNodeBase
+    src={`${BASE}shapes/kosul.png`}
+    alt="Koşul"
+    label={data.label || 'Koşul ?'}
+    ports={['top', 'left', 'right', 'bottom']}
   />
 )
 const InputNode = ({ data }) => (
@@ -92,23 +107,16 @@ const OutputNode = ({ data }) => (
     label={data.label || 'Çıktı'}
   />
 )
-const DecisionNode = ({ data }) => (
-  <ImgNodeBase
-    src={`${BASE}shapes/kosul.png`}
-    alt="Koşul"
-    label={data.label || 'Koşul ?'}
-    ports={['top', 'left', 'right', 'bottom']}
-  />
-)
+
 const nodeTypes = {
   startEnd: StartEndNode,
   process: ProcessNode,
-  input: InputNode,
   decision: DecisionNode,
+  input: InputNode,
   output: OutputNode,
 }
 
-/* ---------- Palette (5 sütun, küçük ikonlar ve aralıklı) ---------- */
+/* ---- Palet ---- */
 function ShapeIcon({ type }) {
   const map = {
     startEnd: `${BASE}shapes/basla.png`,
@@ -119,15 +127,17 @@ function ShapeIcon({ type }) {
   }
   return <img src={map[type]} alt={type} className="palette-icon" />
 }
-function PaletteItem({ type, label }) {
+function PaletteItem({ type, label, locked }) {
   const onDragStart = (evt) => {
+    if (locked) return
     evt.dataTransfer.setData('application/reactflow', type)
+    evt.dataTransfer.setData('text/plain', type)
     evt.dataTransfer.effectAllowed = 'move'
   }
   return (
     <div
-      className="palette-item"
-      draggable
+      className={`palette-item${locked ? ' disabled' : ''}`}
+      draggable={!locked}
       onDragStart={onDragStart}
       title={label}
     >
@@ -136,7 +146,7 @@ function PaletteItem({ type, label }) {
     </div>
   )
 }
-function Palette() {
+function Palette({ locked }) {
   const items = [
     { type: 'startEnd', label: 'Başla / Bitir' },
     { type: 'input', label: 'Girdi' },
@@ -145,26 +155,28 @@ function Palette() {
     { type: 'output', label: 'Çıktı' },
   ]
   return (
-    <div className="palette">
+    <div className={`palette${locked ? ' is-locked' : ''}`}>
       {items.map((it) => (
-        <PaletteItem key={it.type} {...it} />
+        <PaletteItem key={it.type} {...it} locked={locked} />
       ))}
     </div>
   )
 }
 
-/* ---------- Flow Editor (her zaman görünür; gerekirse kilit overlay) ---------- */
-function FlowEditor({ onSaveFlow, locked }) {
+/* ---- Flow Editor ---- */
+function FlowEditor({ onSaveFlow, locked, algoPreviewRef }) {
   const { screenToFlowPosition } = useReactFlow()
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [editing, setEditing] = useState({ open: false, id: null, text: '' })
-  const wrapperForPngRef = useRef(null)
+
+  // ReactFlow ağacının kapsayıcısı
+  const rfOuterRef = useRef(null)
 
   const edgeOptions = useMemo(
     () => ({
-      markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--success)' },
-      style: { stroke: 'var(--success)', strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#58c98b' },
+      style: { stroke: '#58c98b', strokeWidth: 2 },
     }),
     []
   )
@@ -197,6 +209,7 @@ function FlowEditor({ onSaveFlow, locked }) {
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
   }, [])
+
   const onNodeDoubleClick = useCallback(
     (_e, node) => {
       if (locked) return
@@ -231,130 +244,138 @@ function FlowEditor({ onSaveFlow, locked }) {
     }
   }
 
+  const deleteSelected = () => {
+    if (locked) return
+    setNodes((nds) => nds.filter((n) => !n.selected))
+    setEdges((eds) => eds.filter((e) => !e.selected))
+  }
+
+  /* ---- KAYDET: Flow PNG + Algoritma PNG ---- */
   const handleSave = async () => {
     const payload = { nodes, edges }
     writeLS(LS.FLOW, payload)
-    let pngDataUrl = null
+
+    let flowImage = null
+    let algoImage = null
     try {
-      const el = wrapperForPngRef.current
-      if (el) {
-        pngDataUrl = await htmlToImage.toPng(el, {
+      // React Flow’un gerçek kök DIV’ini hedefle:
+      const target =
+        rfOuterRef.current?.querySelector('.react-flow') || rfOuterRef.current
+      if (target) {
+        flowImage = await htmlToImage.toPng(target, {
           pixelRatio: 2,
           cacheBust: true,
+          backgroundColor: 'transparent',
         })
       }
     } catch {
       /* ignore */
     }
-    onSaveFlow({ flow: payload, image: pngDataUrl })
+
+    try {
+      const a = algoPreviewRef?.current
+      if (a) {
+        algoImage = await htmlToImage.toPng(a, {
+          pixelRatio: 2,
+          cacheBust: true,
+          backgroundColor: 'transparent',
+        })
+      }
+    } catch {
+      /* ignore */
+    }
+
+    onSaveFlow({ flow: payload, flowImage, algoImage })
   }
 
   return (
     <div className="flow-shell">
-      <div className="panel" style={{ marginTop: 10 }}>
-        <div className="panel-body">
-          <p className="small">
-            Paletten şekli sürükleyip noktalı alana bırak. Çift tıkla → metni
-            düzenle. Portlardan sürükleyip ok oluştur.
-          </p>
+      <p className="small">
+        Paletten şekli sürükle → tuvale bırak. Çift tıkla → etiketi düzenle.
+      </p>
 
-          <Palette />
+      <Palette locked={locked} />
 
-          <div
-            className="row"
-            style={{ margin: '6px 0 10px', flexWrap: 'wrap', gap: 8 }}
-          >
-            <button className="button" onClick={clearAll} disabled={locked}>
-              Hepsini Temizle
-            </button>
-            <button
-              className="button primary"
-              onClick={handleSave}
-              disabled={locked}
-            >
-              Akış Diyagramını Kaydet
-            </button>
-          </div>
-
-          <div className="rf-wrapper" onDrop={onDrop} onDragOver={onDragOver}>
-            <div
-              ref={wrapperForPngRef}
-              className={locked ? 'locked' : ''}
-              style={{ height: '100%', position: 'relative' }}
-            >
-              {locked && (
-                <div className="rf-lock">
-                  <span>Önce algoritmayı “Başla … Bitir” şartıyla kaydet.</span>
-                </div>
-              )}
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                nodeTypes={nodeTypes}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                onNodeDoubleClick={onNodeDoubleClick}
-                fitView
-                defaultEdgeOptions={edgeOptions}
-                proOptions={{ hideAttribution: true }}
-              >
-                <MiniMap />
-                <Controls />
-                <Background />
-              </ReactFlow>
-            </div>
-          </div>
-
-          {editing.open && (
-            <div
-              className="modal"
-              onMouseDown={() =>
-                setEditing({ open: false, id: null, text: '' })
-              }
-            >
-              <div
-                className="modal-content"
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <h3 style={{ marginTop: 0 }}>Şekil Metnini Düzenle</h3>
-                <input
-                  className="input"
-                  value={editing.text}
-                  onChange={(e) =>
-                    setEditing((s) => ({ ...s, text: e.target.value }))
-                  }
-                  placeholder="Etiketi yazın"
-                  style={{ width: '100%', marginBottom: 10 }}
-                />
-                <div className="row" style={{ justifyContent: 'flex-end' }}>
-                  <button
-                    className="button ghost"
-                    onClick={() =>
-                      setEditing({ open: false, id: null, text: '' })
-                    }
-                  >
-                    İptal
-                  </button>
-                  <button className="button primary" onClick={applyEdit}>
-                    Kaydet
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+      <div className="flow-toolbar">
+        <button className="button" onClick={clearAll} disabled={locked}>
+          Hepsini Temizle
+        </button>
+        <button className="button" onClick={deleteSelected} disabled={locked}>
+          Seçileni Sil
+        </button>
+        <button
+          className="button primary"
+          onClick={handleSave}
+          disabled={locked}
+        >
+          Kaydet (Flow + Algoritma)
+        </button>
       </div>
+
+      <div
+        className={`rf-wrapper${locked ? ' locked-wrapper' : ''}`}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+        ref={rfOuterRef} /* <- ekran görüntüsü hedefi için kapsayıcı */
+      >
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeDoubleClick={onNodeDoubleClick}
+          fitView
+          defaultEdgeOptions={edgeOptions}
+          proOptions={{ hideAttribution: true }}
+        >
+          <MiniMap />
+          <Controls />
+          <Background gap={24} size={1} />
+        </ReactFlow>
+      </div>
+
+      {editing.open && (
+        <div
+          className="modal"
+          onMouseDown={() => setEditing({ open: false, id: null, text: '' })}
+        >
+          <div
+            className="modal-content"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0 }}>Şekil Metnini Düzenle</h3>
+            <input
+              className="input"
+              value={editing.text}
+              onChange={(e) =>
+                setEditing((s) => ({ ...s, text: e.target.value }))
+              }
+              placeholder="Etiket"
+            />
+            <div className="row end gap8">
+              <button
+                className="button ghost"
+                onClick={() => setEditing({ open: false, id: null, text: '' })}
+              >
+                İptal
+              </button>
+              <button className="button primary" onClick={applyEdit}>
+                Kaydet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-/* ---------- App ---------- */
+/* ---- App ---- */
 function InnerApp() {
-  const [user] = useState(() => readLS(LS.USER, ''))
-  const [cls] = useState(() => readLS(LS.CLASS, ''))
-  const [nameInput, setNameInput] = useState(user)
-  const [classInput, setClassInput] = useState(cls)
+  const [nameInput, setNameInput] = useState(() => readLS(LS.USER, ''))
+  const [classInput, setClassInput] = useState(() => readLS(LS.CLASS, ''))
   const [steps, setSteps] = useState(() => readLS(LS.ALGO, ['']))
   const [savedAlgo, setSavedAlgo] = useState(() => readLS(LS.ALGO, null))
   const [startTs, setStartTs] = useState(() => readLS(LS.START, null))
@@ -364,6 +385,8 @@ function InnerApp() {
   const [showStart, setShowStart] = useState(
     () => !(readLS(LS.USER, '') && readLS(LS.CLASS, ''))
   )
+
+  const algoPreviewRef = useRef(null) // Algoritma panelini PNG almak için
 
   // sayaç
   const tickRef = useRef(null)
@@ -395,15 +418,24 @@ function InnerApp() {
     setShowStart(false)
   }
 
-  // adım sürükle-bırak
+  // adımlar
+  const addStep = () => setSteps((s) => [...s, ''])
+  const removeStep = (i) => setSteps((s) => s.filter((_, idx) => idx !== i))
+  const moveStep = (i, dir) =>
+    setSteps((s) => {
+      const k = [...s]
+      const j = i + dir
+      if (j < 0 || j >= k.length) return k
+      ;[k[i], k[j]] = [k[j], k[i]]
+      return k
+    })
   const dragIndexRef = useRef(null)
   const onStepDragStart = (i) => (e) => {
     dragIndexRef.current = i
     e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(i))
   }
-  const onStepDragOver = (e) => {
-    e.preventDefault()
-  }
+  const onStepDragOver = (e) => e.preventDefault()
   const onStepDrop = (i) => (e) => {
     e.preventDefault()
     const from = dragIndexRef.current
@@ -415,22 +447,6 @@ function InnerApp() {
       return arr
     })
     dragIndexRef.current = null
-  }
-
-  const addStep = () => setSteps((s) => [...s, ''])
-  const removeStep = (i) => setSteps((s) => s.filter((_, idx) => idx !== i))
-  const updateStep = (i, val) =>
-    setSteps((s) => s.map((it, idx) => (idx === i ? val : it)))
-  const moveStep = (i, dir) => {
-    setSteps((s) => {
-      const k = [...s],
-        j = i + dir
-      if (j < 0 || j >= k.length) return k
-      const t = k[i]
-      k[i] = k[j]
-      k[j] = t
-      return k
-    })
   }
 
   const saveAlgorithm = () => {
@@ -447,7 +463,8 @@ function InnerApp() {
     setSavedAlgo(cleaned)
   }
 
-  const onSaveFlow = ({ flow, image }) => {
+  /* Flow + Algoritma görüntülerini History’ye kaydet */
+  const onSaveFlow = ({ flow, flowImage, algoImage }) => {
     if (!savedAlgo) {
       alert('Önce algoritmayı kaydet.')
       return
@@ -462,40 +479,41 @@ function InnerApp() {
       seconds,
       when: new Date().toISOString().slice(0, 19).replace('T', ' '),
       flow,
-      image,
+      flowImage, // <- AKIŞ PNG
+      algoImage, // <- ALGORİTMA PNG
+      algo: savedAlgo, // metinler de dursun
     }
     const board = readLS(LS.BOARD, [])
     board.push(entry)
     writeLS(LS.BOARD, board.slice(-200))
-    alert('Akış diyagramı kaydedildi ve History’e eklendi!')
+    alert('Kaydedildi! (Flow + Algoritma görüntüleri History’de)')
   }
 
   const leaderboard = readLS(LS.BOARD, [])
 
-  // GİRİŞ EKRANI
+  /* ---- Giriş ekranı ---- */
   if (showStart) {
     return (
       <div className="start-screen">
-        <div className="start-card separate">
-          <div className="logo-wrap center">
-            <img src={`${BASE}logo.png`} className="logo x3" alt="logo" />
-          </div>
+        <div className="start-card">
+          <img src={`${BASE}shapes/logo.png`} className="logo big" alt="logo" />
           <h1>Algoritma & Akış Diyagramı Stüdyosu</h1>
-          <p className="small">Devam etmek için adını ve sınıfını gir.</p>
-          <div className="col inputs-narrow">
+
+          <div className="start-inputs">
             <input
-              className="input biginput same"
+              className="input biginput"
               placeholder="Ad Soyad"
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
             />
             <input
-              className="input biginput same"
+              className="input biginput"
               placeholder="Sınıf (ör. 9A)"
               value={classInput}
               onChange={(e) => setClassInput(e.target.value)}
             />
           </div>
+
           <button
             className="button primary bigbtn"
             onClick={saveUser}
@@ -508,16 +526,19 @@ function InnerApp() {
     )
   }
 
-  // UYGULAMA EKRANI
+  /* ---- Uygulama ekranı ---- */
   const locked = !savedAlgo
+
   return (
     <div className="app-wrap">
       <div className="topbar">
         <div className="left">
-          <img src={`${BASE}logo.png`} className="logo x2" alt="logo" />
-          <div className="brand">Algoritma & Akış Diyagramı Stüdyosu</div>
-          <div className="userpill">
-            {readLS(LS.USER, '')} · {readLS(LS.CLASS, '-')}
+          <img src={`${BASE}shapes/logo.png`} className="logo" alt="logo" />
+          <div className="title-stack">
+            <div className="brand">Algoritma & Akış Diyagramı Stüdyosu</div>
+            <div className="user-under">
+              {readLS(LS.USER, '')} · {readLS(LS.CLASS, '-')}
+            </div>
           </div>
         </div>
 
@@ -532,35 +553,42 @@ function InnerApp() {
           )}
         </div>
 
-        <button className="button history" onClick={() => setShowHistory(true)}>
+        <button
+          className="button history top-right"
+          onClick={() => setShowHistory(true)}
+        >
           History
         </button>
       </div>
 
       <div className="main three-wide">
-        {/* Sol – Algoritma adım editörü */}
+        {/* Sol – Algoritma Adımları */}
         <div className="panel">
           <h2>Algoritma Adımları</h2>
           <div className="panel-body">
-            <div style={{ marginTop: 4 }}>
-              {steps.map((v, i) => (
-                <div
-                  className="step"
-                  key={i}
-                  draggable
-                  onDragStart={onStepDragStart(i)}
-                  onDragOver={onStepDragOver}
-                  onDrop={onStepDrop(i)}
-                  title="Sürükleyip bırakın (↑/↓ de çalışır)"
-                  style={{ cursor: 'grab' }}
-                >
-                  <label>Adım {i + 1}</label>
-                  <input
-                    className="input"
-                    value={v}
-                    onChange={(e) => updateStep(i, e.target.value)}
-                    placeholder="ör. Başla / ... / Bitir"
-                  />
+            {steps.map((v, i) => (
+              <div
+                className="step oneline"
+                key={i}
+                draggable
+                onDragStart={onStepDragStart(i)}
+                onDragOver={onStepDragOver}
+                onDrop={onStepDrop(i)}
+                title="Sürükleyip bırakın ya da ↑/↓ ile taşıyın"
+                style={{ cursor: 'grab' }}
+              >
+                <label>Adım {i + 1}</label>
+                <input
+                  className="input step-input"
+                  value={v}
+                  onChange={(e) =>
+                    setSteps((s) =>
+                      s.map((it, idx) => (idx === i ? e.target.value : it))
+                    )
+                  }
+                  placeholder="ör. Başla / ... / Bitir"
+                />
+                <div className="step-actions">
                   <button className="button" onClick={() => moveStep(i, -1)}>
                     ↑
                   </button>
@@ -574,36 +602,40 @@ function InnerApp() {
                     Sil
                   </button>
                 </div>
-              ))}
-              <div className="row" style={{ marginTop: 8 }}>
-                <button className="button" onClick={addStep}>
-                  + Adım Ekle
-                </button>
-                <button className="button primary" onClick={saveAlgorithm}>
-                  Algoritmayı Kaydet
-                </button>
               </div>
+            ))}
+            <div className="row gap8">
+              <button className="button" onClick={addStep}>
+                + Adım Ekle
+              </button>
+              <button className="button primary" onClick={saveAlgorithm}>
+                Algoritmayı Kaydet
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Orta – Flow */}
+        {/* Orta – Akış Editörü */}
         <div className="panel">
-          <h2 style={{ margin: '14px' }}>Akış Diyagramı</h2>
+          <h2>Akış Diyagramı</h2>
           <div className="panel-body">
-            <FlowEditor onSaveFlow={onSaveFlow} locked={locked} />
+            <FlowEditor
+              onSaveFlow={onSaveFlow}
+              locked={locked}
+              algoPreviewRef={algoPreviewRef}
+            />
           </div>
         </div>
 
-        {/* Sağ – Algoritman */}
+        {/* Sağ – Algoritman (PNG alınan panel) */}
         <div className="panel">
           <h2>Algoritman</h2>
-          <div className="panel-body">
+          <div className="panel-body" ref={algoPreviewRef}>
             {savedAlgo ? (
               <ul className="preview no-bullets">
                 {savedAlgo.map((s, i) => (
                   <li key={i}>
-                    <span className="stepno">Adım {i + 1}:</span>
+                    <span className="stepno">Adım {i + 1}:</span>{' '}
                     {s || <em>(boş)</em>}
                   </li>
                 ))}
@@ -615,24 +647,19 @@ function InnerApp() {
         </div>
       </div>
 
-      {/* History Modal */}
+      {/* History */}
       {showHistory && (
         <div className="modal">
           <div className="modal-content wide">
-            <div
-              className="row"
-              style={{ justifyContent: 'space-between', marginBottom: 8 }}
-            >
-              <h3 style={{ margin: '4px 0' }}>History</h3>
+            <div className="row between" style={{ marginBottom: 8 }}>
+              <h3 style={{ margin: 0 }}>History</h3>
               <button className="button" onClick={() => setShowHistory(false)}>
                 Kapat
               </button>
             </div>
+
             {leaderboard.length === 0 ? (
-              <p className="small">
-                Henüz kayıt yok. Akış diyagramını kaydettiğinde burada
-                görünecek.
-              </p>
+              <p className="small">Henüz kayıt yok.</p>
             ) : (
               <table className="table">
                 <thead>
@@ -669,13 +696,11 @@ function InnerApp() {
                 </tbody>
               </table>
             )}
+
             {preview && (
               <div className="modal inner">
                 <div className="modal-content">
-                  <div
-                    className="row"
-                    style={{ justifyContent: 'space-between', marginBottom: 8 }}
-                  >
+                  <div className="row between" style={{ marginBottom: 8 }}>
                     <div className="small">
                       <b>{preview.name}</b> · {preview.cls || '-'} ·{' '}
                       {preview.when} · {preview.steps} adım · {preview.seconds}{' '}
@@ -685,21 +710,37 @@ function InnerApp() {
                       Kapat
                     </button>
                   </div>
-                  {preview.image ? (
-                    <img
-                      src={preview.image}
-                      alt="Akış diyagramı"
-                      style={{
-                        maxWidth: '100%',
-                        borderRadius: 12,
-                        border: '1px solid #2a2f36',
-                      }}
-                    />
-                  ) : (
-                    <p className="small">
-                      Bu kayıtta görüntü bulunamadı (flow verisi var).
-                    </p>
-                  )}
+
+                  {/* Yan yana iki görsel: Sol Flow, Sağ Algoritma */}
+                  <div className="two-col">
+                    <div className="shot">
+                      <div className="small" style={{ marginBottom: 6 }}>
+                        <b>Akış Diyagramı</b>
+                      </div>
+                      {preview.flowImage ? (
+                        <img src={preview.flowImage} alt="Flow" />
+                      ) : (
+                        <p className="small">Görüntü yok.</p>
+                      )}
+                    </div>
+                    <div className="shot">
+                      <div className="small" style={{ marginBottom: 6 }}>
+                        <b>Algoritma</b>
+                      </div>
+                      {preview.algoImage ? (
+                        <img src={preview.algoImage} alt="Algoritma" />
+                      ) : Array.isArray(preview.algo) &&
+                        preview.algo.length > 0 ? (
+                        <ol>
+                          {preview.algo.map((s, i) => (
+                            <li key={i}>{s}</li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <p className="small">Görüntü yok.</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

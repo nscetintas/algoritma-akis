@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ['main']
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: 'pages'
+  group: "pages"
   cancel-in-progress: true
 
 jobs:
@@ -27,8 +27,10 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      # package-lock.json yoksa 'npm ci' hata verir.
+      # İstersen 'npm install' kullan:
       - name: Install
-        run: npm ci
+        run: npm install
 
       - name: Build
         run: npm run build
@@ -43,8 +45,12 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deploy-pages.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # (Opsiyonel ama tavsiye edilen) Pages için ortamı hazırla
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
       - name: Deploy to GitHub Pages
-        id: deploy-pages
+        id: deployment
         uses: actions/deploy-pages@v4
