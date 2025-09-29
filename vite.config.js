@@ -5,5 +5,5 @@ import react from '@vitejs/plugin-react'
 // ❗️ REPO_ADI'ni github’daki repo adınla AYNI yap
 export default defineConfig({
   plugins: [react()],
-  base: '/', // örn: '/algoritma-akis/'
+  base: '/algoritma-akis/', // örn: '/algoritma-akis/'
 })
