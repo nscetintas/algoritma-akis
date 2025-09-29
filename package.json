@@ -4,9 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5176 --strictPort",
+    "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort"
+    "preview": "vite preview",
+    "build:pages": "vite build --outDir docs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
